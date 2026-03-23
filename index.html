@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Logiciel de Rentabilité Expert - Lucas VILLEMAIN</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --red-header: #E74C3C;
+            --blue-highlight: #3498DB;
+            --yellow-input: #FFF9C4;
+            --gray-sub: #D5DBDB;
+            --text-dark: #2C3E50;
+        }
+
+        body { font-family: 'Segoe UI', sans-serif; background: #F4F7F6; margin: 0; padding: 10px; color: var(--text-dark); }
+        .main-container { max-width: 1200px; margin: auto; background: white; padding: 15px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        
+        .header-top { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--blue-highlight); padding-bottom: 10px; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
+        
+        .tabs { display: flex; gap: 5px; margin-bottom: 0px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+        .tab { padding: 12px 15px; cursor: pointer; background: #eee; border: 1px solid #ccc; border-bottom: none; border-radius: 8px 8px 0 0; font-weight: bold; transition: 0.3s; white-space: nowrap; flex: 1; text-align: center; font-size: 0.9em; outline: none; }
+        .tab.active { background: white; color: var(--blue-highlight); border-top: 3px solid var(--blue-highlight); position: relative; z-index: 2; }
+        .tab.active.year-plus { color: #27AE60; border-top-color: #27AE60; }
+
+        .table-responsive { width: 100%; overflow-x: auto; border: 1px solid #ccc; margin-top: -1px; }
+        .excel-table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 600px; }
+        .excel-table td { border: 1px solid #D0D0D0; padding: 8px 12px; }
+        
+        .section-header { background: var(--red-header); color: white; font-weight: bold; text-align: center; text-transform: uppercase; }
+        .sub-header { background: var(--gray-sub); font-weight: bold; text-align: center; font-size: 0.9em; }
+        
+        .input-cell { background: var(--yellow-input); width: 120px; }
+        .interactive-input { width: 100%; border: none; background: transparent; text-align: right; font-weight: bold; outline: none; color: #856404; font-size: 1.1em; }
+        
+        .res-bold { font-weight: bold; text-align: right; background: #F9F9F9; }
+        .blue-res { background: var(--blue-highlight); color: white; font-weight: bold; text-align: right; }
+        .sub-txt { color: #7F8C8D; font-size: 0.85em; font-style: italic; font-weight: normal; }
+
+        .charts-container { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px; }
+        .card { border: 1px solid #eee; padding: 15px; border-radius: 8px; background: #fff; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+
+        .chart-box { 
+            position: relative; 
+            height: 400px; 
+            width: 100%; 
+        }
+
+        @media (max-width: 768px) {
+            .charts-container { grid-template-columns: 1fr; }
+            .header-top { flex-direction: column; text-align: center; }
+            .tab { font-size: 0.8em; padding: 10px 5px; }
+            .main-container { padding: 10px; }
+            .chart-box { height: 300px; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="main-container">
+    <div class="header-top">
+        <div style="font-size: 0.9em; color: #7F8C8D;">Étude de rentabilité complète - Automatisation Nom de Domaine</div>
+        <div style="text-align: right; font-weight: bold; font-size: 1.3em;">NetPilote</div>
+    </div>
+
+    <div class="tabs">
+        <button id="btn-N" class="tab active" onclick="switchTab(event, 'N')">Année N</button>
+        <button id="btn-N1" class="tab" onclick="switchTab(event, 'N1')">Année N+1</button>
+        <button id="btn-N2" class="tab" onclick="switchTab(event, 'N2')">Année N+2</button>
+        <button id="btn-GRAPH" class="tab" onclick="switchTab(event, 'GRAPH')">Analyses Graphiques</button>
+    </div>
+
+    <div id="content-area"></div>
+</div>
+
+<script>
+    const TX_HORAIRE = 46.83;
+    const PRIX_DOMAINE = 59;
+    const MAINT_FIXE = 100;
+
+    let state = {
+        N: { clients: 167, x: 160, k: 20, isYearOne: true },
+        N1: { clients: 167, x: 160, k: 20, isYearOne: false },
+        N2: { clients: 167, x: 160, k: 20, isYearOne: false }
+    };
+
+    let currentTab = 'N';
+
+    function switchTab(evt, tabId) {
+        let tabs = document.getElementsByClassName("tab");
+        for (let t of tabs) t.classList.remove("active", "year-plus");
+        evt.currentTarget.classList.add("active");
+        if(tabId !== 'N') evt.currentTarget.classList.add("year-plus");
+        currentTab = tabId;
+        render();
+    }
+
+    function updateData(key, val) {
+        state[currentTab][key] = parseFloat(val) || 0;
+        render();
+    }
+
+    function getFullCalculations(yearId) {
+        const s = state[yearId];
+        const ca = s.clients * PRIX_DOMAINE;
+        const tpsHAn = (s.clients * 30) / 60;
+        const coutCrea = s.isYearOne ? (s.x * TX_HORAIRE) : 0;
+        const tpsMaintAn = s.x * 0.20;
+        const coutMaintSalAn = tpsMaintAn * TX_HORAIRE;
+        const investTotal = coutCrea + coutMaintSalAn;
+        const ecoResa = (s.k / 60) * TX_HORAIRE;
+        const maintResa = s.clients > 0 ? (MAINT_FIXE / s.clients) : 0;
+        const gainSalAnNet = (ecoResa - maintResa) * s.clients;
+        const roi = investTotal > 0 ? ((gainSalAnNet - investTotal) / investTotal) * 100 : 0;
+        return { ca, tpsHAn, coutCrea, tpsMaintAn, coutMaintSalAn, investTotal, ecoResa, maintResa, gainSalAnNet, roi };
+    }
+
+    function render() {
+        const area = document.getElementById('content-area');
+        if (currentTab === 'GRAPH') {
+            area.innerHTML = `
+                <div class="charts-container">
+                    <div class="card"><h3>Évolution du ROI (%)</h3><div class="chart-box"><canvas id="roiChart"></canvas></div></div>
+                    <div class="card"><h3>Évolution du Gain Salarial Super Brut (€)</h3><div class="chart-box"><canvas id="gainChart"></canvas></div></div>
+                </div>`;
+            renderCharts();
+            return;
+        }
+
+        const s = state[currentTab];
+        const c = getFullCalculations(currentTab);
+
+        area.innerHTML = `
+        <div class="table-responsive">
+            <table class="excel-table">
+                <tr><td colspan="3" class="section-header">Activité et charge de travail</td></tr>
+                <tr><td>Nombre de clients</td><td class="input-cell"><input type="number" class="interactive-input" value="${s.clients}" onchange="updateData('clients', this.value)"></td><td class="sub-txt">Valeur éditable</td></tr>
+                <tr><td>CA sur l'année (Clients * 59€)</td><td colspan="2" class="res-bold">${c.ca.toLocaleString()} €</td></tr>
+                <tr><td>Temps passé / an (min)</td><td colspan="2" class="res-bold">${(s.clients * 30).toLocaleString()} min</td></tr>
+                <tr><td>Temps passé / an (heures)</td><td colspan="2" class="res-bold">${c.tpsHAn.toFixed(1)} h</td></tr>
+
+                <tr><td colspan="3" class="section-header">Structure de rémunération (Fixe)</td></tr>
+                <tr><td>Salaire super brut annuel</td><td colspan="2" class="res-bold">85 225,00 €</td></tr>
+                <tr><td>Salaire brut annuel</td><td colspan="2" class="res-bold">60 017,61 €</td></tr>
+                <tr><td>Salaire net annuel</td><td colspan="2" class="res-bold">46 213,56 €</td></tr>
+                <tr><td>Taux salarial super brut horaire</td><td colspan="2" class="blue-res">46,83 €</td></tr>
+
+                <tr><td colspan="3" class="section-header">Coût salarial (Avant automatisation)</td></tr>
+                <tr><td>Coût salarial mensuel</td><td colspan="2" class="res-bold">${((c.tpsHAn/12) * TX_HORAIRE).toLocaleString(undefined,{minimumFractionDigits:2})} €</td></tr>
+                <tr><td>Coût salarial annuel</td><td colspan="2" class="res-bold">${(c.tpsHAn * TX_HORAIRE).toLocaleString(undefined,{minimumFractionDigits:2})} €</td></tr>
+
+                <tr><td colspan="3" class="section-header">Analyse de rentabilité de l'investissement</td></tr>
+                <tr><td>Heures de travail pour mise en place (x)</td><td class="input-cell"><input type="number" class="interactive-input" value="${s.x}" onchange="updateData('x', this.value)"></td><td class="res-bold">x =</td></tr>
+                <tr><td>Coût de création outil</td><td colspan="2" class="res-bold">${c.coutCrea.toLocaleString(undefined,{minimumFractionDigits:2})} €</td></tr>
+                <tr><td>Temps maintenance annuel (20% de x)</td><td colspan="2" class="res-bold">${c.tpsMaintAn.toFixed(1)} h</td></tr>
+                <tr><td>Coût salarial maintenance / an</td><td colspan="2" class="blue-res">${c.coutMaintSalAn.toLocaleString(undefined,{minimumFractionDigits:2})} €</td></tr>
+                <tr><td><b>Investissement total Année ${currentTab}</b></td><td colspan="2" class="res-bold">${c.investTotal.toLocaleString(undefined,{minimumFractionDigits:2})} €</td></tr>
+                <tr><td>ROI de l'année</td><td colspan="2" class="res-bold">${Math.round(c.roi)} %</td></tr>
+
+                <tr><td colspan="3" class="section-header">Impact économique des réservations</td></tr>
+                <tr><td>Temps gagné / client (k minutes)</td><td class="input-cell"><input type="number" class="interactive-input" value="${s.k}" onchange="updateData('k', this.value)"></td><td class="res-bold">k =</td></tr>
+                <tr><td>Économie de coût de réservation pour une réservation</td><td colspan="2" class="res-bold">${c.ecoResa.toLocaleString(undefined,{minimumFractionDigits:2})} €</td></tr>
+                <tr><td>Coût maintenance par client</td><td colspan="2" class="blue-res">${c.maintResa.toLocaleString(undefined,{minimumFractionDigits:2})} €</td></tr>
+                <tr><td>Gain salarial par réservation</td><td colspan="2" class="res-bold">${(c.ecoResa - c.maintResa).toLocaleString(undefined,{minimumFractionDigits:2})} €</td></tr>
+                <tr><td><b>Gain salarial annuel super brut</b></td><td colspan="2" class="res-bold">${c.gainSalAnNet.toLocaleString(undefined,{minimumFractionDigits:2})} €</td></tr>
+
+                <tr><td colspan="3" class="section-header">PayBack (Amortissement)</td></tr>
+                <tr><td>Nombre de réservation pour amotir l'investissement sur l'année</td><td colspan="2" class="res-bold">${Math.round(c.investTotal / (c.ecoResa - c.maintResa))}</td></tr>
+                <tr><td>Temps en années pour amortir grâce aux réservations</td><td colspan="2" class="res-bold">${( (c.investTotal / (c.ecoResa - c.maintResa)) / s.clients ).toFixed(2)}</td></tr>
+            </table>
+        </div>`;
+    }
+
+    function renderCharts() {
+        const stats = ['N', 'N1', 'N2'].map(y => getFullCalculations(y));
+        const labels = ['Année N', 'Année N+1', 'Année N+2'];
+
+        new Chart(document.getElementById('roiChart'), {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'ROI (%)',
+                    data: stats.map(s => s.roi),
+                    borderColor: '#E74C3C',
+                    backgroundColor: 'rgba(231, 76, 60, 0.1)',
+                    fill: true,
+                    tension: 0.3
+                }]
+            },
+            options: { 
+                responsive: true, 
+                maintainAspectRatio: false, 
+                plugins: { legend: { position: 'bottom' }} 
+            }
+        });
+
+        new Chart(document.getElementById('gainChart'), {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Gain Salarial Super Brut (€)',
+                    data: stats.map(s => s.gainSalAnNet),
+                    backgroundColor: '#27AE60'
+                }]
+            },
+            options: { 
+                responsive: true, 
+                maintainAspectRatio: false, 
+                plugins: { legend: { position: 'bottom' }} 
+            }
+        });
+    }
+
+    window.onload = render;
+</script>
+</body>
+</html>
